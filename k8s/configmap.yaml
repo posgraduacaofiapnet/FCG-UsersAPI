@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: users-api-config
+data:
+  RabbitMq__Host: rabbitmq
+  RabbitMq__Username: guest
+  Jwt__Issuer: UsersAPI
+  Jwt__Audience: FCG
