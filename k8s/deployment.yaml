@@ -39,3 +39,15 @@ spec:
                 secretKeyRef:
                   name: users-api-secrets
                   key: RabbitMq__Password
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
