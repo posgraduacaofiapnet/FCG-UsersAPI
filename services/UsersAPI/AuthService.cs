@@ -9,11 +9,12 @@ public interface IUserEventPublisher
     Task PublishUserCreatedAsync(UserCreatedEvent message, CancellationToken cancellationToken);
 }
 
-public sealed class MassTransitUserEventPublisher(IPublishEndpoint publisher) : IUserEventPublisher
+public sealed class MassTransitUserEventPublisher(IPublishEndpoint publisher, CorrelationContext correlationContext) : IUserEventPublisher
 {
     public Task PublishUserCreatedAsync(UserCreatedEvent message, CancellationToken cancellationToken)
     {
-        return publisher.Publish(message, cancellationToken);
+        return publisher.Publish(message, context =>
+            context.Headers.Set(CorrelationId.HeaderName, correlationContext.Value), cancellationToken);
     }
 }
 
