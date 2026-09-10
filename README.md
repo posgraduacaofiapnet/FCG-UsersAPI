@@ -15,6 +15,7 @@ Parte do **FIAP Cloud Games (FCG)** — Tech Challenge Fase 2.
 - FluentValidation
 - Swagger / OpenAPI
 - Serilog (logs estruturados em JSON)
+- Prometheus-net (Métricas de aplicação)
 
 ---
 
@@ -25,6 +26,7 @@ Parte do **FIAP Cloud Games (FCG)** — Tech Challenge Fase 2.
 | `POST` | `/api/auth/register` | Cadastra um novo usuário | Não |
 | `POST` | `/api/auth/login` | Realiza login e retorna o token JWT | Não |
 | `GET` | `/health` | Health check | Não |
+| `GET` | `/metrics` | Métricas no padrão Prometheus | Não |
 
 ### Payload de Cadastro
 

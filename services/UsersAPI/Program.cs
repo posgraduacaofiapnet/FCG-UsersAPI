@@ -6,6 +6,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Serilog;
 using Serilog.Formatting.Compact;
+using Prometheus;
 using UsersAPI;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -72,12 +73,14 @@ using (var scope = app.Services.CreateScope())
 
 app.UseExceptionHandler();
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseHttpMetrics();
 app.UseSerilogRequestLogging();
 app.UseSwagger();
 app.UseSwaggerUI();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapMetrics();
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", service = "UsersAPI" }));
 
 app.MapPost("/api/auth/register", async (
