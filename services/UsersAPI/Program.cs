@@ -1,6 +1,5 @@
 using System.Text;
 using FluentValidation;
-using MassTransit;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -24,7 +23,6 @@ builder.Services.AddDbContext<UsersDbContext>(options =>
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<CorrelationContext>();
 builder.Services.AddScoped<JwtTokenService>();
-builder.Services.AddScoped<IUserEventPublisher, MassTransitUserEventPublisher>();
 builder.Services.AddScoped<IValidator<RegisterUserRequest>, RegisterUserRequestValidator>();
 builder.Services.AddScoped<IValidator<LoginRequest>, LoginRequestValidator>();
 
@@ -46,26 +44,11 @@ builder.Services.AddAuthorization();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
-builder.Services.AddMassTransit(bus =>
-{
-    bus.UsingRabbitMq((context, cfg) =>
-    {
-        cfg.Host(builder.Configuration["RabbitMq:Host"] ?? "localhost", "/", host =>
-        {
-            host.Username(builder.Configuration["RabbitMq:Username"] ?? "guest");
-            host.Password(builder.Configuration["RabbitMq:Password"] ?? "guest");
-        });
-        cfg.ConfigureEndpoints(context);
-    });
-});
-
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<UsersDbContext>();
-    await dbContext.Database.EnsureCreatedAsync();
-
     var configuration = scope.ServiceProvider.GetRequiredService<IConfiguration>();
     var logger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
     await DatabaseSeeder.SeedAdminAsync(dbContext, configuration, logger);

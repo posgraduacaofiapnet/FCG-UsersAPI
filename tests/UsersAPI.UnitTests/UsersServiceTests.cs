@@ -1,5 +1,4 @@
 using Bogus;
-using FCG.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using UsersAPI;
@@ -24,17 +23,6 @@ public sealed class UsersFixture
         .Build());
 }
 
-public sealed class FakeUserEventPublisher : IUserEventPublisher
-{
-    public UserCreatedEvent? Published { get; private set; }
-
-    public Task PublishUserCreatedAsync(UserCreatedEvent message, CancellationToken cancellationToken)
-    {
-        Published = message;
-        return Task.CompletedTask;
-    }
-}
-
 public sealed class UsersServiceTests(UsersFixture fixture) : IClassFixture<UsersFixture>
 {
     [Theory]
@@ -57,11 +45,10 @@ public sealed class UsersServiceTests(UsersFixture fixture) : IClassFixture<User
     }
 
     [Fact]
-    public async Task RegisterAsync_PersistsUserAndPublishesEvent()
+    public async Task RegisterAsync_PersistsUserAndOutboxInSameUnitOfWork()
     {
         await using var db = fixture.CreateDbContext();
-        var publisher = new FakeUserEventPublisher();
-        var service = new AuthService(db, fixture.CreateTokenService(), publisher);
+        var service = new AuthService(db, fixture.CreateTokenService());
         var request = new RegisterUserRequest(fixture.Faker.Name.FullName(), fixture.Faker.Internet.Email(), "Senha@123");
 
         await service.RegisterAsync(request, CancellationToken.None);
@@ -69,7 +56,12 @@ public sealed class UsersServiceTests(UsersFixture fixture) : IClassFixture<User
         var user = Assert.Single(await db.Users.ToListAsync());
         Assert.Equal(request.Email, user.Email);
         Assert.True(PasswordHasher.Verify(request.Password, user.PasswordHash));
-        Assert.Equal(user.Id, publisher.Published?.UserId);
+        var outbox = Assert.Single(await db.OutboxMessages.ToListAsync());
+        Assert.Equal(NotificationEventTypes.UserCreated, outbox.EventType);
+        Assert.Contains(user.Id.ToString(), outbox.Payload);
+        Assert.False(outbox.IsSuccessful);
+        Assert.Null(outbox.NextAttemptAt);
+        Assert.Equal(0, outbox.Attempts);
     }
 
     [Fact]
