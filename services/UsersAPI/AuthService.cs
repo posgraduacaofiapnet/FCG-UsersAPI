@@ -1,48 +1,46 @@
-using FCG.Contracts;
-using MassTransit;
+using System.Data;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 
 namespace UsersAPI;
 
-public interface IUserEventPublisher
-{
-    Task PublishUserCreatedAsync(UserCreatedEvent message, CancellationToken cancellationToken);
-}
-
-public sealed class MassTransitUserEventPublisher(IPublishEndpoint publisher, CorrelationContext correlationContext) : IUserEventPublisher
-{
-    public Task PublishUserCreatedAsync(UserCreatedEvent message, CancellationToken cancellationToken)
-    {
-        return publisher.Publish(message, context =>
-            context.Headers.Set(CorrelationId.HeaderName, correlationContext.Value), cancellationToken);
-    }
-}
-
 public sealed class AuthService(
     UsersDbContext dbContext,
-    JwtTokenService tokenService,
-    IUserEventPublisher publisher)
+    JwtTokenService tokenService)
 {
+    private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+
     public async Task<IResult> RegisterAsync(RegisterUserRequest request, CancellationToken cancellationToken)
     {
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+
         if (await dbContext.Users.AnyAsync(user => user.Email == request.Email, cancellationToken))
         {
             return Results.UnprocessableEntity(new { error = "Users.EmailAlreadyRegistered" });
         }
 
+        var createdAt = DateTimeOffset.UtcNow;
         var user = new UserAccount
         {
             Name = request.Name,
             Email = request.Email,
             PasswordHash = PasswordHasher.Hash(request.Password),
             Role = "User",
-            CreatedAt = DateTime.UtcNow
+            CreatedAt = createdAt.UtcDateTime
         };
 
-        dbContext.Users.Add(user);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        var notification = new UserCreatedNotification(user.Id, user.Name, user.Email, createdAt);
+        var outboxMessage = OutboxMessage.Create(NotificationEventTypes.UserCreated, notification, JsonOptions);
 
-        await publisher.PublishUserCreatedAsync(new UserCreatedEvent(user.Id, user.Name, user.Email, user.CreatedAt), cancellationToken);
+        dbContext.Users.Add(user);
+        dbContext.OutboxMessages.Add(outboxMessage);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
 
         return Results.Created($"/api/users/{user.Id}", new { user.Id, user.Name, user.Email, user.Role });
     }
