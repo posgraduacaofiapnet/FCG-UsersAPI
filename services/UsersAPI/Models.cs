@@ -15,6 +15,7 @@ public sealed class UserAccount
 public sealed class UsersDbContext(DbContextOptions<UsersDbContext> options) : DbContext(options)
 {
     public DbSet<UserAccount> Users => Set<UserAccount>();
+    public DbSet<OutboxMessage> OutboxMessages => Set<OutboxMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -28,6 +29,29 @@ public sealed class UsersDbContext(DbContextOptions<UsersDbContext> options) : D
             builder.Property(user => user.PasswordHash).IsRequired();
             builder.Property(user => user.Role).IsRequired().HasMaxLength(30);
             builder.Property(user => user.CreatedAt).IsRequired();
+        });
+
+        modelBuilder.Entity<OutboxMessage>(builder =>
+        {
+            builder.ToTable("OutboxMessages", tableBuilder =>
+            {
+                tableBuilder.HasCheckConstraint("CK_OutboxMessages_Attempts", "[Attempts] >= 0");
+                tableBuilder.HasCheckConstraint("CK_OutboxMessages_Payload_IsJson", "ISJSON([Payload]) = 1");
+                tableBuilder.HasCheckConstraint("CK_OutboxMessages_EventType_NotEmpty", "LEN(LTRIM(RTRIM([EventType]))) > 0");
+            });
+            builder.HasKey(message => message.Id);
+            builder.Property(message => message.Id).ValueGeneratedNever();
+            builder.Property(message => message.EventType).IsRequired().HasMaxLength(100);
+            builder.Property(message => message.IsSuccessful).HasDefaultValue(false);
+            builder.Property(message => message.CreatedAt).IsRequired();
+            builder.Property(message => message.Payload).IsRequired().HasColumnType("nvarchar(max)");
+            builder.Property(message => message.Attempts).HasDefaultValue(0);
+            builder.HasIndex(message => new { message.NextAttemptAt, message.CreatedAt, message.Id })
+                .HasDatabaseName("IX_OutboxMessages_Pending_NextAttemptAt_CreatedAt")
+                .HasFilter("[IsSuccessful] = 0 AND [Attempts] < 10");
+            builder.HasIndex(message => new { message.CreatedAt, message.Id })
+                .HasDatabaseName("IX_OutboxMessages_Successful_CreatedAt")
+                .HasFilter("[IsSuccessful] = 1");
         });
     }
 }

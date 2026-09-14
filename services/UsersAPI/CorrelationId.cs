@@ -1,5 +1,3 @@
-using MassTransit;
-
 namespace UsersAPI;
 
 public static class CorrelationId
@@ -11,7 +9,6 @@ public static class CorrelationId
             ? value.Trim()
             : Guid.NewGuid().ToString("N");
 
-    public static string From(Headers headers) => Normalize(headers.Get<string>(HeaderName));
 }
 
 public sealed class CorrelationContext
