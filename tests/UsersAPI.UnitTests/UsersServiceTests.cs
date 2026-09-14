@@ -1,6 +1,7 @@
 using Bogus;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.Http;
 using UsersAPI;
 
 namespace UsersAPI.UnitTests;
@@ -80,5 +81,74 @@ public sealed class UsersServiceTests(UsersFixture fixture) : IClassFixture<User
     {
         Assert.Equal("lesson-123", CorrelationId.Normalize(" lesson-123 "));
         Assert.Equal(32, CorrelationId.Normalize(new string('x', 129)).Length);
+    }
+
+    [Fact]
+    public async Task RegisterAsync_WhenEmailExists_ReturnsUnprocessableEntity()
+    {
+        await using var db = fixture.CreateDbContext();
+        var request = new RegisterUserRequest("Ada", "ada@example.com", "Senha@123");
+        var service = new AuthService(db, fixture.CreateTokenService());
+        await service.RegisterAsync(request, CancellationToken.None);
+
+        var result = await service.RegisterAsync(request, CancellationToken.None);
+        Assert.Equal(StatusCodes.Status422UnprocessableEntity, ((IStatusCodeHttpResult)result).StatusCode);
+    }
+
+    [Fact]
+    public async Task LoginAsync_WithValidCredentials_ReturnsToken()
+    {
+        await using var db = fixture.CreateDbContext();
+        db.Users.Add(new UserAccount
+        {
+            Name = "Ada",
+            Email = "ada@example.com",
+            PasswordHash = PasswordHasher.Hash("Senha@123")
+        });
+        await db.SaveChangesAsync();
+        var service = new AuthService(db, fixture.CreateTokenService());
+
+        var result = await service.LoginAsync(new LoginRequest("ada@example.com", "Senha@123"), CancellationToken.None);
+        Assert.Equal(StatusCodes.Status200OK, ((IStatusCodeHttpResult)result).StatusCode);
+        Assert.IsType<AuthResponse>(((IValueHttpResult)result).Value);
+    }
+
+    [Theory]
+    [InlineData("missing@example.com", "Senha@123")]
+    [InlineData("ada@example.com", "Errada@123")]
+    public async Task LoginAsync_WithInvalidCredentials_ReturnsUnauthorized(string email, string password)
+    {
+        await using var db = fixture.CreateDbContext();
+        db.Users.Add(new UserAccount
+        {
+            Name = "Ada",
+            Email = "ada@example.com",
+            PasswordHash = PasswordHasher.Hash("Senha@123")
+        });
+        await db.SaveChangesAsync();
+
+        var result = await new AuthService(db, fixture.CreateTokenService())
+            .LoginAsync(new LoginRequest(email, password), CancellationToken.None);
+        Assert.Equal(StatusCodes.Status401Unauthorized, ((IStatusCodeHttpResult)result).StatusCode);
+    }
+
+    [Fact]
+    public async Task CorrelationMiddleware_NormalizesHeaderAndInvokesNextDelegate()
+    {
+        var nextCalled = false;
+        var middleware = new CorrelationIdMiddleware(_ =>
+        {
+            nextCalled = true;
+            return Task.CompletedTask;
+        });
+        var context = new DefaultHttpContext();
+        context.Request.Headers[CorrelationId.HeaderName] = " request-123 ";
+        var correlation = new CorrelationContext();
+
+        await middleware.InvokeAsync(context, correlation);
+
+        Assert.True(nextCalled);
+        Assert.Equal("request-123", correlation.Value);
+        Assert.Equal("request-123", context.Response.Headers[CorrelationId.HeaderName]);
     }
 }
