@@ -3,7 +3,12 @@ kind: Deployment
 metadata:
   name: users-api
 spec:
-  replicas: 1
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: users-api
@@ -37,7 +42,7 @@ spec:
               readOnly: true
       containers:
         - name: users-api
-          image: ghcr.io/posgraduacaofiapnet/fcg-users-api:latest
+          image: 174302433776.dkr.ecr.us-east-1.amazonaws.com/fcg-users-api:latest
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
