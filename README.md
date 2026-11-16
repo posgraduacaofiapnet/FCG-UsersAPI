@@ -7,9 +7,11 @@ evento `UserCreated`, mantendo a evolução transacional da Fase 3 como base par
 
 UsersAPI está no escopo obrigatório de CI/CD. O workflow em
 [publish-container.yml](.github/workflows/publish-container.yml) executa testes em PRs e pushes na
-`master` e, após validação, publica imagem `latest` no GHCR em push ou execução manual.
-O deploy no Kubernetes, registry privado nativo da nuvem e tags por versão/commit ainda precisam
-ser implementados. A publicação de imagem não atualiza automaticamente os pods.
+`master`. Em push ou execução manual, autentica na AWS por OIDC, constrói e publica imagens
+no Amazon ECR com tags SHA e `latest`, executa Trivy sem bloquear a entrega e atualiza o
+Deployment no EKS com `kubectl set image`, aguardando o rollout. PRs executam somente testes.
+O Deployment e os recursos de infraestrutura precisam existir antes da execução da pipeline.
+Configuração de IAM, cluster e secrets: [guia de CI/CD](https://github.com/posgraduacaofiapnet/FCG-Orchestration/blob/master/docs/CICD.md).
 
 A [documentação central da Fase 4](https://github.com/posgraduacaofiapnet/FCG-Orchestration/blob/master/docs/FASE4.md)
 contém a matriz de requisitos e as pendências. O [Orchestration](https://github.com/posgraduacaofiapnet/FCG-Orchestration)
@@ -56,14 +58,18 @@ O comando usa PowerShell. Clonar também CatalogAPI, PaymentsAPI, `FCG-Outbox-Pr
 o fluxo completo usa LocalStack, SQL Server, Redis, MongoDB, RabbitMQ e Kong. A API atende
 diretamente em `http://localhost:5101`, Swagger em `/swagger` e pelo Kong em `http://localhost:8000`.
 
-Para Kubernetes, aplique primeiro `kubectl apply -k FCG-Orchestration/k8s`, depois os
-manifestos desta API e do worker. Os testes existem na solution, mas devem ser executados em uma
-etapa de validação separada.
+Para Kubernetes, seguir o guia de CI/CD do Orchestration: preparar os Secrets locais a partir
+dos exemplos, aplicar com `scripts/apply-k8s-secrets.sh`, depois a infraestrutura e os recursos
+das APIs com `scripts/apply-api-manifests.sh`. Os scripts `.sh` exigem Bash (por exemplo, WSL).
+Não usar `kubectl apply -f k8s/` nesta API: incluiria `secret.example.yaml` e poderia sobrescrever
+um Secret real com placeholders. `k8s/secret.yaml` é local e ignorado pelo Git.
 
-O Kustomize da infraestrutura não aplica gateway, monitoramento, APIs nem workers. Os manifests
-da API usam GHCR `latest` e probes HTTP em `/health`; esse endpoint não verifica todas as
-dependências. Execução em cluster gerenciado e rollout sem indisponibilidade ainda precisam
-ser comprovados.
+O Kustomize da infraestrutura não aplica gateway, monitoramento, APIs nem workers. O manifesto
+da API usa ECR `latest` como imagem inicial; a pipeline seleciona a tag SHA no rollout. Há duas
+réplicas e `maxUnavailable: 0`. `/health` não verifica todas as dependências. A documentação
+central registra execução no EKS em 11/11/2026; nesta revisão de 16/11/2026 não foi repetido o
+deploy nem verificado o ambiente ao vivo. Evidência de tráfego contínuo durante rollout continua
+separada da configuração da estratégia.
 
 ## Configuração
 
